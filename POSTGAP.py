@@ -317,6 +317,9 @@ def get_options():
     parser.add_argument('--hdf5',help='Location of eQTL HDF5 file')
     parser.add_argument('--sqlite',help='Location of eQTL sqlite file')
     parser.add_argument('--output2', help='gene-cluster association output file')
+    parser.add_argument('--kstart', type=int, default=1, help='how many causal variants to start with in the full exploration of sets')
+    parser.add_argument('--kmax', type=int, default=5, help='maximum number of causal variants')
+
     if len(sys.argv) == 1:
 	    print commandline_description
 	    sys.exit(0)
@@ -352,6 +355,8 @@ def get_options():
     assert os.path.isdir(postgap.Globals.DATABASES_DIR), "--database_dir parameter " + options.databases + " does not point to an existing directory!"
     assert os.path.exists(postgap.Globals.DATABASES_DIR + "/GRASP.txt"), "Can't find GRASP.txt in " + options.databases
 
+    postgap.Globals.KSTART = options.kstart
+    postgap.Globals.KMAX = options.kmax
 
     if options.diseases is None:
         options.diseases = []
