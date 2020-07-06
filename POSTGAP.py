@@ -130,9 +130,7 @@ def main():
 			output2 = open(options.output2, "w")
 			output2.write(pretty_gene_output(res))
 			output2.close()
-
-
-
+ 
 		logging.info("Done with diseases_to_genes")
 	elif options.rsID is not None:
 		res = postgap.Integration.rsIDs_to_genes(options.rsID, options.tissues)
@@ -364,36 +362,8 @@ def get_options():
     return options
 
 def pretty_gene_output(associations):
-    str_associations=""
-
-    for gene_association in associations:
-        
-        gene_id = gene_association.gene.id
-        cluster = gene_association.cluster.gwas_configuration_posteriors.sample_label
-
-        snp_numerator = 0
-        snps_cluster = {}
-        for snp_id in gene_association.cluster.gwas_configuration_posteriors.labels:
-            snps_cluster[snp_numerator]=snp_id
-            snp_numerator += 1
-        
-        for tissue, dict_posterior in gene_association.collocation_posterior.items():
-            gene_tissue_posterior = str(dict_posterior['_CLUSTER'])
-
- 
-            for snp_index in snps_cluster:
-                posterior_key = (snp_index,)
-                line = []
-                line.append (gene_id)
-                line.append (cluster)
-                line.append (snps_cluster[snp_index])
-                line.append (str(dict_posterior[posterior_key]))
-                line.append (tissue)
-                line.append (gene_tissue_posterior)
-
-                str_associations +='\t'.join(line) + '\n'
-
-    return str_associations
+	text = ['\t'.join(str(t) for t in [gene_association.gene.id, gene_association.cluster.gwas_configuration_posteriors.sample_label, snp_id, dict_posterior[(i,)], tissue, dict_posterior['_CLUSTER']]) for gene_association in associations for tissue, dict_posterior in gene_association.collocation_posterior.items() for i,snp_id in enumerate(gene_association.cluster.gwas_configuration_posteriors.labels)]
+	return '\n'.join(text)
 
 def pretty_snp_output(associations):
 	"""
