@@ -72,7 +72,8 @@ def finemap_gwas_cluster(cluster, population):
 		n            = sample_size,
 		labels       = ld_snp_ids,
 		sample_label = sample_label,
- 		kmax         = 1
+		kstart       = postgap.Globals.KSTART,
+ 		kmax         = postgap.Globals.KMAX
 	)
 
 	assert len(ld_snps) ==  ld_matrix.shape[0]
@@ -294,7 +295,8 @@ def compute_gene_tissue_joint_posterior(cluster, tissue, gene, eQTL_snp_hash):
 		beta_scores  = numpy.array(betas),
 		cov_matrix   = cluster.ld_matrix,
 		n            = 500, #TODO extract eQTL sample sizes
- 		kmax         = 1,
+ 		kstart       = postgap.Globals.KSTART,
+                kmax         = postgap.Globals.KMAX,
 		sample_label = sample_label,
 		labels       = [ld_snp.rsID for ld_snp in cluster.ld_snps]
 	)
