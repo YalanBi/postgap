@@ -756,36 +756,23 @@ class GWAS_File(GWAS_source):
 		
 		return pvalue_filtered_gwas_associations.get_found_list()
 	
-	def create_gwas_clusters_with_pvalues_from_file(self, gwas_clusters, gwas_data_file):
-		
-		proper_gwas_cluster = []
-		
-		cluster_number = 0
-		for gwas_cluster in gwas_clusters:
-			cluster_number += 1
-			gwas_cluster_with_values_from_file = self.create_gwas_cluster_with_pvalues_from_file(gwas_cluster, gwas_data_file)
-			proper_gwas_cluster.append(gwas_cluster_with_values_from_file)
-		
-		return proper_gwas_cluster
-
 	def create_gwas_cluster_with_pvalues_from_file(self, gwas_cluster, gwas_data_file):
 
 		ld_gwas_associations = self.create_gwas_association_collector()
 		
 		self.parse_gwas_data_file(
-			gwas_data_file                    = gwas_data_file, 
-			want_this_gwas_association_filter = self.create_snp_filter(gwas_cluster.ld_snps),
-			callback                          = ld_gwas_associations.add_to_found_list,
-			max_lines_to_return_threshold     = len(gwas_cluster.ld_snps)
+			gwas_data_file                = gwas_data_file, 
+			wanted_snps                   = [ld_snp.rsID for ld_snp in gwas_cluster.ld_snps],
+			callback                      = ld_gwas_associations.add_to_found_list,
+			max_lines_to_return_threshold = len(gwas_cluster.ld_snps)
 		)
 		logging.info( "ld_gwas_associations.found_list: " + pformat(ld_gwas_associations.get_found_list()) )
 		
 		ld_snps_converted_to_gwas_snps = []
-		ld_snps_that_could_not_be_converted_to_gwas_snps = []
 		
 		for ld_snp in gwas_cluster.ld_snps:
 			
-			gwas_associations_for_ld_snp = filter(lambda x : ld_snp.rsID == x.snp.rsID, ld_gwas_associations.get_found_list())
+			gwas_associations_for_ld_snp = filter(lambda x : ld_snp.rsID == x.snp, ld_gwas_associations.get_found_list())
 			
 			# If one could be found, add that.
 			if len(gwas_associations_for_ld_snp) == 1:
@@ -811,41 +798,25 @@ class GWAS_File(GWAS_source):
 			# If the snp wasn't found, add it as a regular snp.
 			if len(gwas_associations_for_ld_snp) == 0:
 				logging.info("Found no matching assocation for " + ld_snp.rsID + " in the file. Including it as regular snp.")
-				ld_snps_that_could_not_be_converted_to_gwas_snps.append(ld_snp)
 				
 		proper_gwas_cluster = GWAS_Cluster(
-			gwas_snps          = gwas_cluster.gwas_snps,
-			ld_snps            = ld_snps_converted_to_gwas_snps + ld_snps_that_could_not_be_converted_to_gwas_snps,
-			finemap_posteriors = None,
+			gwas_snps = gwas_cluster.gwas_snps,
+			ld_snps = ld_snps_converted_to_gwas_snps,
+			ld_matrix = None,
+			z_scores = None,
+			gwas_configuration_posteriors = None
 		)
 		return proper_gwas_cluster
 	
-	def create_snp_filter(self, snps):
-		
-		rsIDs_to_look_for = []
-		
-		for snp in snps:
-			rsIDs_to_look_for.append(snp.rsID)
-		
-		logging.info( "Searching for snps: " + pformat(rsIDs_to_look_for) )
-		
-		def snp_name_filter(gwas_association):
-			
-			rsID  = gwas_association.snp.rsID
-			found = rsID in rsIDs_to_look_for
-			
-			return found
-		
-		return snp_name_filter
-
 	def create_pvalue_filter(self, pvalue_threshold):
 		return lambda pvalue: float(pvalue) < pvalue_threshold
 	
 	def parse_gwas_data_file(
 			self, 
 			gwas_data_file, 
-			callback, 
-			want_this_gwas_association_filter,
+			callback,
+			wanted_snps = None, 
+			want_this_gwas_association_filter = None,
 			max_lines_to_return_threshold = None,
 		):
 		
@@ -861,7 +832,10 @@ class GWAS_File(GWAS_source):
 			for column_index, column_label in enumerate(column_labels):
 				parsed[column_label] = items[column_index]
 			
-			if not want_this_gwas_association_filter(parsed["p-value"]):
+			if want_this_gwas_association_filter is not None and not want_this_gwas_association_filter(parsed["p-value"]):
+				continue
+			
+			if wanted_snps is not None and not parsed['variant_id'] in wanted_snps:
 				continue
 
 			try:
