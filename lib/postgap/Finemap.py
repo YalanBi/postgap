@@ -344,11 +344,11 @@ def finemap(z_scores, beta_scores, cov_matrix, n, labels, sample_label, kstart=1
 		Arg verbose = False: boolean, print the progress of the stochastic search
 		Returntype: OneDConfigurationSample
 	'''
-
+	
 	# Test inputs
 	assert len(z_scores) == cov_matrix.shape[0], 'Covariance matrix has %i rows, %i expcted' % (cov_matrix.shape[0], len(z_scores))
 	assert len(z_scores) == cov_matrix.shape[1], 'Covariance matrix has %i columns, %i expcted' % (cov_matrix.shape[0], len(z_scores))
-	assert not kstart > kmax, 'Incorrect number of causal variants specified, kmax (%i) must be greater than kstart (%s)' % (kmax, kstart)
+	assert not kstart > kmax, 'Incorrect number of causal variants specified, kmax (%i) must be greater than kstart (%i)' % (kmax, kstart)
 	assert not numpy.any(numpy.isnan(z_scores)), 'Missing values detected in z-scores'
 	assert not numpy.any(numpy.isnan(cov_matrix)), 'Missing values detected in covariance matrix'
 
