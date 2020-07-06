@@ -419,7 +419,7 @@ def finemap(z_scores, beta_scores, cov_matrix, n, labels, sample_label, kstart=1
 			# Keep count of sampled configs
 			count += 1
 
-		res_out = merge_samples(result_list).normalise_posteriors()
+		res_out = merge_samples(result_list, labels, sample_label).normalise_posteriors()
 
 		if output == "configuration":
 			return res_out
@@ -670,7 +670,7 @@ def calc_logbinom(subset_size, k, m):
 		p_out = p_binom / p_rescale
 		return numpy.log(p_out)
 
-def merge_samples(samples):
+def merge_samples(samples, labels, sample_label):
 	'''
 		Return merged OneDConfigurationSample
 		Arg1: [ OneDConfigurationSample ]
@@ -697,7 +697,9 @@ def merge_samples(samples):
 			posterior = posterior,
 			log_BF = log_BF,
 			configuration_size = configuration_size,
-			log_prior = log_prior
+			log_prior = log_prior,
+			labels = labels,
+			sample_label = sample_label
 		)
 
 def check_eigenvals(cor,Sigma,eigen_thresh=0.1):
