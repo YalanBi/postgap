@@ -66,3 +66,6 @@ ALL_TISSUES=[]
 
 KSTART = None
 KMAX = None
+
+CLUSTER_DIR = None
+CLUSTER_FILE = None
