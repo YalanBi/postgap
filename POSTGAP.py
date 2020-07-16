@@ -354,7 +354,7 @@ def get_options():
 
     if postgap.Globals.GWAS_SUMMARY_STATS_FILE is None:
     	assert options.rsID is None or (options.efos is None and options.diseases is None)
-    	assert options.rsID is not None or options.efos is not None or options.diseases is not None or options.coords is not None
+    	assert options.rsID is not None or options.efos is not None or options.diseases is not None or options.coords is not None or options.cluster_file is not None
     
     import os
     assert os.path.isdir(postgap.Globals.DATABASES_DIR), "--database_dir parameter " + options.databases + " does not point to an existing directory!"
