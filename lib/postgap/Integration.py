@@ -165,6 +165,15 @@ def gwas_snps_to_genes(gwas_snps, population, tissue_weights):
 		cluster = pickle.load(infile)
 		infile.close()
 
+		# Perform GWAS finemapping of the clusters
+		if postgap.Globals.PERFORM_BAYESIAN:
+			logging.info("\tperform GWAS finemapping for cluster %s" % (cluster_fn))
+		
+			try:
+				cluster = postgap.FinemapIntegration.finemap_gwas_cluster(cluster, population)
+			except:
+				logging.info("\tcluster %s failed finemapping" % (cluster_fn))
+
 		res = cluster_to_genes(cluster, tissue_weights, population)
 
 		logging.info("\tFound %i genes associated to cluster %s" % (len(res), cluster_fn))
@@ -174,12 +183,55 @@ def gwas_snps_to_genes(gwas_snps, population, tissue_weights):
 		if postgap.Globals.CLUSTER_DIR is not None:
 			# create pickle files in directory cluster_dir
 			for cluster in clusters:
-				cluster_fn = cluster.gwas_configuration_posteriors.sample_label
+				try:
+					if len(cluster.ld_snps) != len(cluster.gwas_snps) and postgap.Globals.GWAS_SUMMARY_STATS_FILE is not None:
+						ld_snp_hash = dict((ld_snp.rsID, ld_snp) for index, ld_snp in enumerate(cluster.ld_snps))
+						proper_gwas_cluster = postgap.GWAS.GWAS_File().create_gwas_cluster_with_pvalues_from_file(gwas_cluster=cluster, gwas_data_file=postgap.Globals.GWAS_SUMMARY_STATS_FILE)
+						ld_snp_results = dict((ld_snp.snp, (ld_snp.pvalue, ld_snp.beta)) for index, ld_snp in enumerate(proper_gwas_cluster.ld_snps))
+						found_ld_snps = [ld_snp_hash[rsID] for rsID in ld_snp_results]
+						ld_snp_ids, ld_matrix = postgap.LD.get_pairwise_ld(found_ld_snps, population)
+						ld_snps = [ld_snp_hash[rsID] for rsID in ld_snp_ids]
+					else:
+						## Compute ld_matrix
+						ld_snp_ids, ld_matrix = postgap.LD.get_pairwise_ld(cluster.ld_snps, population)
+
+						## Update list of LD SNPs
+						ld_snp_hash = dict((ld_snp.rsID, ld_snp) for index, ld_snp in enumerate(cluster.ld_snps))
+						ld_snps = [ld_snp_hash[rsID] for rsID in ld_snp_ids]
+				except:
+					continue
+			
+				## Define experiment label (serves for debugging logs)
+				chrom = ld_snps[0].chrom
+				start = min(ld_snp.pos for ld_snp in ld_snps)
+				end = max(ld_snp.pos for ld_snp in ld_snps)
+
+				cluster_fn = 'GWAS_Cluster_%s:%i-%i' % (chrom, start, end)
 				outfile = open(postgap.Globals.CLUSTER_DIR + cluster_fn, 'wb')
 				pickle.dump(cluster, outfile)
 				outfile.close()
 			logging.info("save cluster info into a file")
 			sys.exit(0)
+
+		# Perform GWAS finemapping of the clusters
+		if postgap.Globals.PERFORM_BAYESIAN:
+			logging.info("\tperform GWAS finemapping for all clusters")
+		
+			finemap_clusters = []
+			for cluster in clusters:
+				try:
+					finemap_clusters.append(postgap.FinemapIntegration.finemap_gwas_cluster(cluster, population))
+				except:
+					continue
+				
+			if not finemap_clusters:
+				finemap_clusters = clusters
+		
+			for cluster in finemap_clusters:
+				for gwas_snp in cluster.gwas_snps:
+					assert gwas_snp.snp.rsID in [ld_snp.rsID for ld_snp in cluster.ld_snps]
+		
+			clusters = finemap_clusters
 
 		res = concatenate(cluster_to_genes(cluster, tissue_weights, population) for cluster in clusters)
 
@@ -251,36 +303,13 @@ def cluster_gwas_snps(gwas_snps, population):
 	# Merge precluster that share one or more GWAS_Cluster.ld_snps.
 	#
 	raw_clusters = merge_preclusters_ld(merge_preclusters_distance(filtered_preclusters))
-	for cluster in filtered_preclusters:
+	for cluster in raw_clusters:
 		for gwas_snp in cluster.gwas_snps:
 			assert gwas_snp.snp.rsID in [ld_snp.rsID for ld_snp in cluster.ld_snps]
 
-	clusters = []
+	logging.info("Found %i clusters from %i GWAS SNP locations" % (len(raw_clusters), len(gwas_snp_locations)))
 
-	if postgap.Globals.PERFORM_BAYESIAN:
-		# Perform GWAS finemapping of the clusters
-		# 
-		for cluster in raw_clusters:
-			try:
-				clusters.append(postgap.FinemapIntegration.finemap_gwas_cluster(cluster, population))
-			except:
-				continue
-				
-		if not clusters:
-			clusters = raw_clusters
-		#clusters = [postgap.FinemapIntegration.finemap_gwas_cluster(cluster, population) for cluster in raw_clusters]
-	else:
-		clusters = raw_clusters
-	
-
-
-	logging.info("Found %i clusters from %i GWAS SNP locations" % (len(clusters), len(gwas_snp_locations)))
-
-	for cluster in filtered_preclusters:
-		for gwas_snp in cluster.gwas_snps:
-			assert gwas_snp.snp.rsID in [ld_snp.rsID for ld_snp in cluster.ld_snps]
-
-	return clusters
+	return raw_clusters
 
 def gwas_snp_to_precluster(gwas_snp, population):
     """
