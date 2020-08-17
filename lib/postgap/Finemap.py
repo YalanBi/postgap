@@ -396,7 +396,6 @@ def finemap(z_scores, beta_scores, cov_matrix, n, labels, sample_label, kstart=1
 		p = results.normalise_posteriors().posterior
 		current_config = configurations[numpy.random.choice(len(p), size=1, p=p)[0]]
 		count = 1
-		result_list = [results]
 		while count < max_iter:
 			# Generate new configs
 			new_configs = create_neighborhood(current_config, len(z_scores), kstart, kmax, neighbourhood_cache)
@@ -404,8 +403,8 @@ def finemap(z_scores, beta_scores, cov_matrix, n, labels, sample_label, kstart=1
 			# Evaluate probabilities of these configs
 			results_nh = compare_neighborhood(new_configs, z_scores, cor_scores, cov_matrix, kmax, n, score_cache, prior, corr_thresh,  v_scale=v_scale, g=g)
 
-			# Add new entries into the results list
-			result_list.append(results_nh)
+			# Add new entries into the results object
+			results = merge_samples([results, results_nh], labels, sample_label)
 
 			# Choose seed for next round among new configs
 			prob = results_nh.normalise_posteriors().posterior
@@ -419,7 +418,7 @@ def finemap(z_scores, beta_scores, cov_matrix, n, labels, sample_label, kstart=1
 			# Keep count of sampled configs
 			count += 1
 
-		res_out = merge_samples(result_list, labels, sample_label).normalise_posteriors()
+		res_out = results.normalise_posteriors()
 
 		if output == "configuration":
 			return res_out
