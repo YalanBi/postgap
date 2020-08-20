@@ -451,82 +451,82 @@ def merge_clusters(cluster, other_cluster):
 		gwas_configuration_posteriors = None
 	)
 
+
 def cluster_to_genes(cluster, tissues, population):
-    """
+	"""
+		Associated Genes to a cluster of gwas_snps
+		Args:
+		* [ Cluster ]
+		* { tissue_name: scalar (weights) }
+		* string (population name)
+		Returntype: [ GeneCluster_Association ]
+	"""
+	if postgap.Globals.PERFORM_BAYESIAN:
+		assert len(cluster.ld_snps) == cluster.ld_matrix.shape[0], (len(cluster.ld_snps), cluster.ld_matrix.shape[0], cluster.ld_matrix.shape[1])
+		assert len(cluster.ld_snps) == cluster.ld_matrix.shape[1], (len(cluster.ld_snps), cluster.ld_matrix.shape[0], cluster.ld_matrix.shape[1])
+		# Obtain interaction data from LD snps
+		associations, eQTL_hash = ld_snps_to_genes([snp for snp in cluster.ld_snps], tissues)
+		gene_tissue_posteriors = postgap.FinemapIntegration.compute_joint_posterior(cluster, eQTL_hash)
 
-        Associated Genes to a cluster of gwas_snps
-        Args:
-        * [ Cluster ]
-        * { tissue_name: scalar (weights) }
-	* string (population name)
-        Returntype: [ GeneCluster_Association ]
+		res = [
+			GeneCluster_Association(
+				gene = gene,
+				score = None,
+				collocation_posterior = gene_tissue_posteriors[gene],
+				cluster = cluster,
+				evidence = filter(lambda X: X.gene == gene, associations), # This is a [ GeneSNP_Association ]
+				eQTL_hash = eQTL_hash,
+				r2 = None
+			)
+			for gene in gene_tissue_posteriors
+		]
 
-    """
-    if postgap.Globals.PERFORM_BAYESIAN:
-      assert len(cluster.ld_snps) == cluster.ld_matrix.shape[0], (len(cluster.ld_snps), cluster.ld_matrix.shape[0], cluster.ld_matrix.shape[1])
-      assert len(cluster.ld_snps) == cluster.ld_matrix.shape[1], (len(cluster.ld_snps), cluster.ld_matrix.shape[0], cluster.ld_matrix.shape[1])
-      # Obtain interaction data from LD snps
-      associations = ld_snps_to_genes([snp for snp in cluster.ld_snps], tissues)
-      gene_tissue_posteriors = postgap.FinemapIntegration.compute_joint_posterior(cluster, associations)
+		logging.info("\tFound %i genes associated" % (len(res)))
 
-      res = [
-	GeneCluster_Association(
-	    gene = gene,
-	    score = None,
-	    collocation_posterior = gene_tissue_posteriors[gene],
-	    cluster = cluster,
-	    evidence = filter(lambda X: X.gene == gene, associations), # This is a [ GeneSNP_Association ]
-	    r2 = None
-	)
-	for gene in gene_tissue_posteriors
-      ]
+	else:
+		# Compute LD from top SNP
+		top_gwas_hit = sorted(cluster.gwas_snps, key=lambda X: X.pvalue)[-1]
+		ld = postgap.LD.get_lds_from_top_gwas(top_gwas_hit.snp, cluster.ld_snps, population=population)
 
-      logging.info("\tFound %i genes associated" % (len(res)))
+		# Obtain interaction data from LD snps
+		associations, eQTL_hash = ld_snps_to_genes([snp for snp in cluster.ld_snps if snp in ld], tissues)
+		
+		# Compute gene score
+		gene_scores = dict(
+			((association.gene, association.snp), (association, association.score * ld[association.snp]))
+			for association in associations
+		)
 
-    else:
-      # Compute LD from top SNP
-      top_gwas_hit = sorted(cluster.gwas_snps, key=lambda X: X.pvalue)[-1]
-      ld = postgap.LD.get_lds_from_top_gwas(top_gwas_hit.snp, cluster.ld_snps, population=population)
+		if len(gene_scores) == 0: return []
 
-      # Obtain interaction data from LD snps
-      associations = ld_snps_to_genes([snp for snp in cluster.ld_snps if snp in ld], tissues)
-      
-      # Compute gene score
-      gene_scores = dict(
-	  ((association.gene, association.snp), (association, association.score * ld[association.snp]))
-	  for association in associations
-      )
+		# OMIM exception
+		max_score = max(X[1] for X in gene_scores.values())
+		for gene, snp in gene_scores:
+			if len(gene_to_phenotypes(gene)):
+				gene_scores[(gene, snp)][1] = max_score
 
-      if len(gene_scores) == 0:
-	  return []
+		# PICS score precomputed and normalised
+		pics = PICS(ld, top_gwas_hit.pvalue)
 
-      # OMIM exception
-      max_score = max(X[1] for X in gene_scores.values())
-      for gene, snp in gene_scores:
-	  if len(gene_to_phenotypes(gene)):
-	      gene_scores[(gene, snp)][1] = max_score
+		# Compute posterior
+		res = [
+			GeneCluster_Association(
+				gene = gene,
+				score = total_score(pics[snp], gene_scores[(gene, snp)][1]),
+				collocation_posterior = None,
+				cluster = cluster,
+				evidence = gene_scores[(gene, snp)][:1], # This is a [ GeneSNP_Association ]
+				eQTL_hash = eQTL_hash,
+				r2 = ld[snp]
+			)
+			for (gene, snp) in gene_scores
+			if snp in pics
+		]
 
-      # PICS score precomputed and normalised
-      pics = PICS(ld, top_gwas_hit.pvalue)
+		logging.info("\tFound %i genes associated around GWAS SNP %s" % (len(res), top_gwas_hit.snp.rsID))
 
-      # Compute posterior
-      res = [
-	  GeneCluster_Association(
-	      gene = gene,
-	      score = total_score(pics[snp], gene_scores[(gene, snp)][1]),
-	      collocation_posterior = None,
-	      cluster = cluster,
-	      evidence = gene_scores[(gene, snp)][:1], # This is a [ GeneSNP_Association ]
-	      r2 = ld[snp]
-	  )
-          for (gene, snp) in gene_scores
-	  if snp in pics
-      ]
-
-      logging.info("\tFound %i genes associated around GWAS SNP %s" % (len(res), top_gwas_hit.snp.rsID))
-
-    # Pick the association with the highest score
-    return sorted(res, key=lambda X: X.score)
+	# Pick the association with the highest score
+	return sorted(res, key=lambda X: X.score)
 
 def PICS(ld, pvalue):
     minus_log_pvalue = - math.log(pvalue) / math.log(10);
@@ -601,22 +601,54 @@ def rsIDs_to_genes(snp, tissues):
 
 def ld_snps_to_genes(ld_snps, tissues):
 	"""
-
 		Associates genes to LD linked SNPs
 		Args:
 		* [ SNP ]
 		* [ string ] (tissues)
 		* Dict SNP => float
-		Returntype: [ GeneSNP_Association ]
-
+		Returntype:
+		* [ GeneCluster_Association ]
+		* Hash of hashes: Gene => Tissue => SNP => Float
 	"""
 	# Search for SNP-Gene pairs:
-	cisreg = cisregulatory_evidence(ld_snps, tissues) # Hash of hashes SNP => Gene => Cisregulatory_Evidence
+	cisreg = cisregulatory_evidence(ld_snps, tissues) # Hash of hashes: SNP => Gene => Cisregulatory_Evidence
+
+	# Organise eQTL data into an easily read hash of hashes
+	gene_tissue_snp_eQTL_hash = organise_eQTL_data(cisreg)
+	
+	# filter eQTL data that goes into the eQTL hash
+	cisreg = filter_eQTL_GTEx(cisreg)
 
 	# Extract SNP specific info:
 	reg = regulatory_evidence(cisreg.keys(), tissues) # Hash: SNP => [ Regulatory_evidence ]
 		
-	return concatenate((create_SNP_GeneSNP_Associations(snp, reg[snp], cisreg[snp]) for snp in cisreg))
+	associations = concatenate((create_SNP_GeneSNP_Associations(snp, reg[snp], cisreg[snp]) for snp in cisreg))
+	
+	return associations, gene_tissue_snp_eQTL_hash
+
+def organise_eQTL_data(cisreg):
+	"""
+		Organise unsorted eQTL data into easily read hash of hashes:
+		Arg1: Hash of hashes: SNP => Gene => Cisregulatory_Evidence
+		Returntype: Hash of hashes: Gene => Tissue => SNP => Float
+	"""
+	res = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(float)))
+	for snp in cisreg:
+		for gene in cisreg[snp]:
+			for evidence in cisreg[snp][gene]:
+				if evidence.source == 'GTEx':
+					res[gene][evidence.tissue][snp.rsID] = (evidence.z_score, evidence.beta)
+	return res
+
+def filter_eQTL_GTEx(cisreg):
+	"""
+		Filter out eQTL data that goes into the eQTL hash
+	"""
+	for snp in cisreg:
+		for gene in cisreg[snp]:
+			cisreg[snp][gene] = filter(lambda X: X.source != 'GTEx', cisreg[snp][gene])
+	
+	return cisreg
 
 def create_SNP_GeneSNP_Associations(snp, reg, cisreg):
 	"""
