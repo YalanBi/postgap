@@ -9,6 +9,8 @@ import itertools as it
 import operator
 import random
 import collections
+import scipy.special
+import logging
 
 OneDConfigurationSample_prototype = collections.namedtuple(
 	'OneDConfigurationSample', 
@@ -393,6 +395,9 @@ def finemap(z_scores, beta_scores, cov_matrix, n, labels, sample_label, kstart=1
 
 	# shotgun stochastic search
 	if kstart < kmax:
+		# Count the amount of all the possible configurations
+		n_all_pos_config = sum(scipy.special.comb(len(z_scores), r, exact=True) for r in range(kstart, kmax+1))
+		
 		p = results.normalise_posteriors().posterior
 		current_config = configurations[numpy.random.choice(len(p), size=1, p=p)[0]]
 		count = 1
@@ -405,6 +410,11 @@ def finemap(z_scores, beta_scores, cov_matrix, n, labels, sample_label, kstart=1
 
 			# Add new entries into the results object
 			results = merge_samples(results, results_nh, labels, sample_label)
+
+			# if all the possible configurations have been searched, stop iterations
+			if len(results.configurations) == n_all_pos_config:
+				logging.info('the amount of possible configurations is ' + str(n_all_pos_config) + '. All have been searched within ' + str(count) + ' iterations')
+				break
 
 			# Choose seed for next round among new configs
 			prob = results_nh.normalise_posteriors().posterior
@@ -514,7 +524,7 @@ def compare_neighborhood(configs, z_scores,  cor_scores, cov_matrix, kmax, n, sc
 	configuration_size = numpy.array([len(configuration) for configuration in configs])
 	log_prior = calc_logbinom(configuration_size, kmax, len(z_scores))
 	log_BF = numpy.zeros(len(configs))
-	i=0
+	i = 0
 
 	for configuration in configs:
 		if tuple(configuration) in score_cache:
@@ -525,10 +535,9 @@ def compare_neighborhood(configs, z_scores,  cor_scores, cov_matrix, kmax, n, sc
 		z_tuple = numpy.take(z_scores, configuration)
 		cor_tuple = numpy.take(cor_scores, configuration)
 		cov_tuple = cov_matrix[numpy.ix_(configuration, configuration)]
-		if numpy.max(numpy.tril(cov_tuple,k=-1)) > corr_thresh:
-			i = i+1
-			continue			
-		if numpy.min(numpy.tril(cov_tuple,k=-1)) < -corr_thresh:
+
+		if numpy.max(numpy.absolute(numpy.tril(cov_tuple, k=-1))) > corr_thresh:
+			score_cache[tuple(configuration)] = 0
 			i = i+1
 			continue
 
@@ -656,13 +665,7 @@ def calc_logbinom(subset_size, k, m):
 		return numpy.zeros(m)
 	else:
 		p = float(1) / m
-		p_binom = p**subset_size * (1 - p)**(m - subset_size)
-		p_k = numpy.zeros(k - 1)
-		for i in range(1, k):
-			p_k[i - 1] = p**i * (1 - p)**(m - i)
-		p_rescale = numpy.sum(p_k)
-		p_out = p_binom / p_rescale
-		return numpy.log(p_out)
+		return numpy.log((p**subset_size * (1 - p)**(m - subset_size)) / sum(p**i * (1 - p)**(m - i) for i in range(1, k)))
 
 def merge_samples(results, results_nh, labels, sample_label):
 	'''
