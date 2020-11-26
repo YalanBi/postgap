@@ -37,12 +37,10 @@ from postgap.DataModel import *
 
 def finemap_gwas_cluster(cluster, population):
 	'''
-
 		Enriches GWAS clusters with z-scores and GWAS posteriors
 		Arg1: GWAS_Cluster
 		Arg2: population (string)
 		Returntype: GWAS_Cluster
-
 	'''
 	if len(cluster.ld_snps) == len(cluster.gwas_snps):
 		ld_snps, ld_matrix, z_scores, betas = compute_ld_matrix(cluster, population)
@@ -50,20 +48,22 @@ def finemap_gwas_cluster(cluster, population):
 		ld_snps, ld_matrix, z_scores, betas = extract_z_scores_from_file(cluster, population)
 	else:
 		ld_snps, ld_matrix, z_scores, betas = impute_z_scores(cluster, population)
-
-
+	
 	## Define experiment label (serves for debugging logs)
 	chrom = ld_snps[0].chrom
 	start = min(ld_snp.pos for ld_snp in ld_snps)
 	end = max(ld_snp.pos for ld_snp in ld_snps)
 	sample_label = 'GWAS_Cluster_%s:%i-%i' % (chrom, start, end)
-
+	
+	# if ld_snps has only one element, it could not perform finemapping
+	assert len(ld_snps) > 1, sample_label + ' becomes a single-SNP cluster'
+	
 	## Define sample size: mean of max for each SNP
 	sample_sizes = map(lambda gwas_snp: max(gwas_association.sample_size for gwas_association in gwas_snp.evidence), cluster.gwas_snps)
 	sample_size = sum(sample_sizes) / len(sample_sizes)
-
+	
 	ld_snp_ids = [ld_snp.rsID for ld_snp in ld_snps]
-
+	
 	## Compute posteriors
 	configuration_posteriors = postgap.Finemap.finemap(
 		z_scores     = numpy.array(z_scores),
@@ -73,9 +73,9 @@ def finemap_gwas_cluster(cluster, population):
 		labels       = ld_snp_ids,
 		sample_label = sample_label,
 		kstart       = postgap.Globals.KSTART,
- 		kmax         = postgap.Globals.KMAX
+		kmax         = postgap.Globals.KMAX
 	)
-
+	
 	assert len(ld_snps) ==  ld_matrix.shape[0]
 	assert len(ld_snps) ==  ld_matrix.shape[1]
 	return GWAS_Cluster(cluster.gwas_snps, ld_snps, ld_matrix, z_scores, configuration_posteriors) 
