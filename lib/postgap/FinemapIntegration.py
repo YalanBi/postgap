@@ -55,8 +55,8 @@ def finemap_gwas_cluster(cluster, population):
 	end = max(ld_snp.pos for ld_snp in ld_snps)
 	sample_label = 'GWAS_Cluster_%s:%i-%i' % (chrom, start, end)
 	
-	# if ld_snps has only one element, it could not perform finemapping
-	assert len(ld_snps) > 1, sample_label + ' becomes a single-SNP cluster'
+	# if ld_snps has less than 10 element, it is less informative
+	assert len(ld_snps) >= 10, sample_label + ' has less than 10 ld_snps in the cluster'
 	
 	## Define sample size: mean of max for each SNP
 	sample_sizes = map(lambda gwas_snp: max(gwas_association.sample_size for gwas_association in gwas_snp.evidence), cluster.gwas_snps)
